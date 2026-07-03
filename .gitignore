@@ -1,0 +1,11 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# yt-dlp per-folder archive
+.yt_dlp_downloaded_archive.txt

@@ -1,5 +1,44 @@
+import os
+import shutil
+
 import yt_dlp
+from dotenv import load_dotenv
 from pathlib import Path
+
+# Load variables from a local .env file (if present) into the environment.
+load_dotenv()
+
+
+def _resolve_ffmpeg_location():
+    """
+    Locate ffmpeg. Priority:
+      1. FFMPEG_LOCATION environment variable (path to the ffmpeg bin directory).
+      2. ffmpeg found on the system PATH.
+    Returns None if neither is set, letting yt-dlp fall back to its own lookup.
+    """
+    env_location = os.environ.get("FFMPEG_LOCATION")
+    if env_location:
+        return env_location
+
+    ffmpeg_on_path = shutil.which("ffmpeg")
+    if ffmpeg_on_path:
+        return str(Path(ffmpeg_on_path).parent)
+
+    return None
+
+
+def _resolve_node_path():
+    """
+    Locate the Node.js executable. Priority:
+      1. NODE_PATH environment variable (full path to node executable).
+      2. node found on the system PATH.
+    Returns None if neither is available.
+    """
+    env_path = os.environ.get("NODE_PATH")
+    if env_path:
+        return env_path
+
+    return shutil.which("node")
 
 
 def is_playlist(url: str) -> bool:
@@ -47,19 +86,21 @@ def download(url, folder, progress_callback=None, error_callback=None):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'ffmpeg_location': r'D:\apps\ffmpeg\ffmpeg-2026-03-30-git-e54e117998-essentials_build\bin',
         'ffmpeg_opts': {
             'preset': 'ultrafast',
             'audio_bitrate': '192k',
             'audio_quality': 2,
         },
-        'js_runtimes': {
-    'node': {
-        'path': r'C:\Program Files\nodejs\node.exe',
-    }
-},
         'logger': _YtDlpLogger(error_callback=error_callback),
     }
+
+    ffmpeg_location = _resolve_ffmpeg_location()
+    if ffmpeg_location:
+        ydl_opts['ffmpeg_location'] = ffmpeg_location
+
+    node_path = _resolve_node_path()
+    if node_path:
+        ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
 
     if progress_callback:
         ydl_opts['progress_hooks'] = [progress_callback]
