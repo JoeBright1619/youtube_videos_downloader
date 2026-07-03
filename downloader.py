@@ -41,6 +41,37 @@ def _resolve_node_path():
     return shutil.which("node")
 
 
+def _resolve_cookies_browser():
+    """
+    Read the COOKIES_FROM_BROWSER environment variable, if set, to let yt-dlp
+    reuse a logged-in browser session. This can surface age-restricted or
+    region-locked videos that YouTube hides from anonymous requests.
+
+    Returns a tuple suitable for yt-dlp's 'cookiesfrombrowser' option
+    (e.g. ('chrome',)), or None if not configured.
+    Accepted values: chrome, edge, firefox, brave, opera, vivaldi, chromium, safari.
+    """
+    browser = (os.environ.get("COOKIES_FROM_BROWSER") or "").strip().lower()
+    if not browser:
+        return None
+    return (browser,)
+
+
+def _resolve_cookie_file():
+    """
+    Read the COOKIES_FILE environment variable: a path to a cookies.txt file
+    (Netscape format) exported from a logged-in browser. This is the most
+    reliable way to pass cookies on modern Chrome/Edge, which encrypt their
+    cookie stores so yt-dlp can't read them directly.
+
+    Returns the path if set and the file exists, otherwise None.
+    """
+    path = (os.environ.get("COOKIES_FILE") or "").strip()
+    if path and Path(path).is_file():
+        return path
+    return None
+
+
 def is_playlist(url: str) -> bool:
     """
     Treat any URL that has a playlist id (list=...) as a playlist,
@@ -81,6 +112,11 @@ def download(url, folder, progress_callback=None, error_callback=None, match_fil
         # allow yt_dlp to process the full playlist instead of forcing
         # single‑video mode.
         'noplaylist': not is_playlist(url),
+        # YouTube gates audio/video formats behind JavaScript "signature"/"n"
+        # challenges. yt-dlp fetches its EJS solver script from GitHub to solve
+        # them; without this, only thumbnails resolve and downloads fail with
+        # "Requested format is not available".
+        'remote_components': ['ejs:github'],
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -101,6 +137,16 @@ def download(url, folder, progress_callback=None, error_callback=None, match_fil
     node_path = _resolve_node_path()
     if node_path:
         ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
+
+    # A cookies.txt file takes precedence over reading the browser directly,
+    # since browser cookie stores are often encrypted/locked.
+    cookie_file = _resolve_cookie_file()
+    if cookie_file:
+        ydl_opts['cookiefile'] = cookie_file
+    else:
+        cookies_browser = _resolve_cookies_browser()
+        if cookies_browser:
+            ydl_opts['cookiesfrombrowser'] = cookies_browser
 
     # Called by yt-dlp for every item before downloading. Returning a string
     # skips that item (with the string as the reason); returning None downloads.

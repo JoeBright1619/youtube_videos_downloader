@@ -49,6 +49,8 @@ To point at specific installations instead, set these two variables:
 | --- | --- |
 | `FFMPEG_LOCATION` | Path to the directory containing the `ffmpeg` executable (its `bin` folder). |
 | `NODE_PATH` | Full path to the `node` executable. |
+| `COOKIES_FILE` | *(optional)* Path to a `cookies.txt` file (Netscape format) exported from a logged-in browser. Lets yt-dlp make authenticated requests. |
+| `COOKIES_FROM_BROWSER` | *(optional)* Read cookies straight from a browser profile (`chrome`, `edge`, `firefox`, …). Often fails on current Chrome/Edge due to encrypted cookie stores — prefer `COOKIES_FILE`. Ignored if `COOKIES_FILE` is set. |
 
 ### Using a `.env` file (recommended)
 
@@ -76,6 +78,22 @@ python main.py
 ```
 
 If a variable is unset, the app falls back to whatever it finds on `PATH`.
+
+### Cookies (for full playlists & restricted videos)
+
+YouTube truncates long playlists for logged-out requests — you may only get the first ~100 items of a larger list — and hides age-restricted/region-locked videos. Providing cookies from a logged-in session fixes both.
+
+Because modern Chrome/Edge encrypt their cookie stores (yt-dlp can't read them directly), the reliable method is a **`cookies.txt` file**:
+
+1. Install a cookie-export extension such as **Get cookies.txt LOCALLY**.
+2. Visit **youtube.com** while logged in, then export the file.
+3. Point the app at it:
+   ```ini
+   # .env
+   COOKIES_FILE=D:\path\to\cookies.txt
+   ```
+
+Keep this file private — it contains a live login session for your account. Cookies expire eventually; re-export if authenticated features stop working.
 
 ## Usage
 
@@ -108,7 +126,8 @@ Progress is displayed in the window. When the batch finishes:
   pip install -U yt-dlp
   ```
 - **`unable to open for writing: [Errno 2] No such file or directory`** — the destination folder can't be written to. On Windows this is often **Controlled Folder Access** (ransomware protection) blocking `python.exe`/`ffmpeg.exe` from writing to protected folders like Music, Documents, or Pictures. Either allow those executables through *Windows Security → Ransomware protection → Allow an app through Controlled folder access*, or download to a non-protected folder.
-- **`n challenge solving failed: Some formats may be missing`** — yt-dlp's JavaScript-challenge solver couldn't run. Make sure `Node.js` is installed and reachable (see [Configuration](#configuration)). Audio downloads usually still succeed, but enabling the solver avoids missing/throttled formats.
+- **`Requested format is not available` / `Only images are available` / `n challenge solving failed`** — YouTube gates audio/video formats behind JavaScript challenges. The app enables yt-dlp's EJS solver (`remote_components: ['ejs:github']`), which fetches a solver script from GitHub at runtime — so this needs **internet access** and a working **Node.js** (see [Configuration](#configuration)). If you still hit it, update yt-dlp (`pip install -U yt-dlp`), since the challenge format changes over time.
+- **Only part of a playlist downloads (e.g. `Downloading 103 items of 254`)** — YouTube truncates long playlists for logged-out requests. The missing items usually still exist and are playable; you're just not authenticated. Provide cookies via `COOKIES_FILE` (see [Cookies](#cookies-for-full-playlists--restricted-videos)) to retrieve the full list.
 
 ## Notes
 

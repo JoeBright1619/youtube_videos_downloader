@@ -20,8 +20,11 @@ class DownloadController:
         self._failed_keys = set()
         # Duplicate handling: None = ask each time, else "skip_all"/"download_all".
         self._dup_policy = None
-        # Normalized titles already present in / added to the folder this run.
+        # Normalized titles of audio files already on disk (snapshot, read-only).
         self._existing_titles = set()
+        # Video ids already evaluated this run (yt-dlp calls the filter twice
+        # per video, so we must only decide once).
+        self._seen_ids = set()
 
     def _run_on_ui(self, fn):
         self.ui.root.after(0, fn)
@@ -83,17 +86,28 @@ class DownloadController:
         and applies the user's choice: skip this / skip all / download this /
         download all.
         """
-        # Wait for full metadata; the container playlist entry has no real title.
-        if incomplete or info_dict.get("_type") == "playlist":
+        # yt-dlp calls this for the playlist container and flat "url" entries as
+        # well as fully-resolved videos, and `incomplete` may be a truthy set of
+        # field names rather than a bool — so gate on the entry type instead of
+        # `incomplete`. Only act on a real video entry (type None or "video").
+        if info_dict.get("_type") not in (None, "video"):
             return None
 
         title = info_dict.get("title") or ""
         norm = _normalize_title(title)
-        if not norm or norm not in self._existing_titles:
-            # Not a known duplicate — allow the download and remember the title
-            # so later items in the same playlist don't re-download it.
-            if norm:
-                self._existing_titles.add(norm)
+        if not norm:
+            return None
+
+        # yt-dlp invokes this filter about twice per video (once while
+        # processing, once just before download). Decide only the first time we
+        # see a given id, otherwise the second call would re-prompt.
+        video_id = info_dict.get("id") or norm
+        if video_id in self._seen_ids:
+            return None
+        self._seen_ids.add(video_id)
+
+        if norm not in self._existing_titles:
+            # Not already on disk — download it.
             return None
 
         # Duplicate detected — decide what to do.
@@ -173,6 +187,7 @@ class DownloadController:
         self.failed_items = []
         self._failed_keys = set()
         self._dup_policy = None
+        self._seen_ids = set()
 
         if not urls or urls == [""]:
             self._run_on_ui(lambda: messagebox.showerror("Error", "Paste at least one link"))
