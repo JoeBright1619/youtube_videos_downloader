@@ -67,7 +67,7 @@ class _YtDlpLogger:
             self._error_callback(msg)
 
 
-def download(url, folder, progress_callback=None, error_callback=None):
+def download(url, folder, progress_callback=None, error_callback=None, match_filter=None):
     archive_file = str(Path(folder) / ".yt_dlp_downloaded_archive.txt")
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -101,6 +101,11 @@ def download(url, folder, progress_callback=None, error_callback=None):
     node_path = _resolve_node_path()
     if node_path:
         ydl_opts['js_runtimes'] = {'node': {'path': node_path}}
+
+    # Called by yt-dlp for every item before downloading. Returning a string
+    # skips that item (with the string as the reason); returning None downloads.
+    if match_filter:
+        ydl_opts['match_filter'] = match_filter
 
     if progress_callback:
         ydl_opts['progress_hooks'] = [progress_callback]

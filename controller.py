@@ -1,3 +1,4 @@
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -6,12 +7,21 @@ from tkinter import filedialog, messagebox
 from downloader import download
 
 
+def _normalize_title(name: str) -> str:
+    """Reduce a title/filename to lowercase alphanumerics for loose matching."""
+    return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
+
+
 class DownloadController:
     def __init__(self, ui):
         self.ui = ui
         self.folder_path = ""
         self.failed_items = []
         self._failed_keys = set()
+        # Duplicate handling: None = ask each time, else "skip_all"/"download_all".
+        self._dup_policy = None
+        # Normalized titles already present in / added to the folder this run.
+        self._existing_titles = set()
 
     def _run_on_ui(self, fn):
         self.ui.root.after(0, fn)
@@ -41,6 +51,69 @@ class DownloadController:
                 "reason": reason or "Unknown download error",
             }
         )
+
+    def _snapshot_existing_titles(self):
+        """Record normalized names of audio files already in the folder."""
+        self._existing_titles = set()
+        audio_exts = {".mp3", ".m4a", ".webm", ".opus", ".wav", ".aac", ".flac"}
+        try:
+            for entry in Path(self.folder_path).iterdir():
+                if entry.is_file() and entry.suffix.lower() in audio_exts:
+                    self._existing_titles.add(_normalize_title(entry.stem))
+        except OSError:
+            pass
+
+    def _ask_duplicate(self, title: str) -> str:
+        """Ask the user how to handle a duplicate. Blocks the download thread."""
+        result = {}
+        done = threading.Event()
+
+        def show():
+            result["value"] = self.ui.ask_duplicate_dialog(title)
+            done.set()
+
+        self._run_on_ui(show)
+        done.wait()
+        return result.get("value", "skip")
+
+    def _match_filter(self, info_dict, incomplete=False):
+        """
+        Called by yt-dlp before each item. Return None to download, or a
+        string reason to skip. Detects tracks that already exist (same title)
+        and applies the user's choice: skip this / skip all / download this /
+        download all.
+        """
+        # Wait for full metadata; the container playlist entry has no real title.
+        if incomplete or info_dict.get("_type") == "playlist":
+            return None
+
+        title = info_dict.get("title") or ""
+        norm = _normalize_title(title)
+        if not norm or norm not in self._existing_titles:
+            # Not a known duplicate — allow the download and remember the title
+            # so later items in the same playlist don't re-download it.
+            if norm:
+                self._existing_titles.add(norm)
+            return None
+
+        # Duplicate detected — decide what to do.
+        if self._dup_policy == "download_all":
+            return None
+        if self._dup_policy == "skip_all":
+            self._set_status(f"Skipped duplicate: {title}", fg="#9ca3af")
+            return f"Already exists: {title}"
+
+        decision = self._ask_duplicate(title)
+        if decision == "skip_all":
+            self._dup_policy = "skip_all"
+        elif decision == "download_all":
+            self._dup_policy = "download_all"
+
+        if decision in ("download", "download_all"):
+            return None
+
+        self._set_status(f"Skipped duplicate: {title}", fg="#9ca3af")
+        return f"Already exists: {title}"
 
     def progress_hook(self, data):
         info = data.get("info_dict") or {}
@@ -99,6 +172,7 @@ class DownloadController:
         urls = self.ui.get_urls()
         self.failed_items = []
         self._failed_keys = set()
+        self._dup_policy = None
 
         if not urls or urls == [""]:
             self._run_on_ui(lambda: messagebox.showerror("Error", "Paste at least one link"))
@@ -109,6 +183,8 @@ class DownloadController:
             self._run_on_ui(lambda: messagebox.showerror("Error", "Choose a folder"))
             self._set_download_enabled(True)
             return
+
+        self._snapshot_existing_titles()
 
         try:
             for i, raw_url in enumerate(urls, start=1):
@@ -126,6 +202,7 @@ class DownloadController:
                         item_url,
                         msg,
                     ),
+                    match_filter=self._match_filter,
                 )
 
             report_path = self._write_failed_report()

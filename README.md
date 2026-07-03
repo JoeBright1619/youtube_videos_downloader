@@ -8,6 +8,7 @@ A simple desktop app for downloading YouTube videos (and full playlists) as MP3 
 - **Playlist support** — any URL containing `list=` is treated as a playlist and downloaded in full; plain video URLs download only the single video.
 - **MP3 conversion** — audio is extracted and encoded to MP3 at 192 kbps.
 - **Resume-friendly** — a per-folder archive (`.yt_dlp_downloaded_archive.txt`) records already-downloaded videos so re-running skips them.
+- **Duplicate prompt** — before downloading, each track is checked against audio files already in the folder (matched loosely by normalized title). If a match is found you're asked what to do: **Skip this**, **Skip all duplicates**, **Download this**, or **Download all duplicates**. "Skip/Download all" applies to the rest of the run automatically.
 - **Failure reporting** — items that fail are skipped (the rest of the batch continues) and written to a timestamped `failed_downloads_*.txt` report in the output folder.
 - **Live progress** — per-track status, download percentage, and conversion state shown in the window.
 - **High-DPI aware** — crisp text and layout on scaled Windows displays.
@@ -99,6 +100,15 @@ Progress is displayed in the window. When the batch finishes:
 | [controller.py](controller.py) | `DownloadController` — handles user actions, runs downloads on a background thread, tracks progress and failures, writes the failure report. |
 | [downloader.py](downloader.py) | Thin wrapper around yt-dlp; configures format, playlist handling, download archive, and MP3 post-processing. |
 | [platform_utils.py](platform_utils.py) | Windows high-DPI awareness and Tk scaling helpers. |
+
+## Troubleshooting
+
+- **`HTTP Error 403: Forbidden` / `unable to download video data`** — YouTube regularly changes how it signs and serves streams, and older yt-dlp builds get rejected. This is the most common cause of download failures. Update yt-dlp and try again:
+  ```bash
+  pip install -U yt-dlp
+  ```
+- **`unable to open for writing: [Errno 2] No such file or directory`** — the destination folder can't be written to. On Windows this is often **Controlled Folder Access** (ransomware protection) blocking `python.exe`/`ffmpeg.exe` from writing to protected folders like Music, Documents, or Pictures. Either allow those executables through *Windows Security → Ransomware protection → Allow an app through Controlled folder access*, or download to a non-protected folder.
+- **`n challenge solving failed: Some formats may be missing`** — yt-dlp's JavaScript-challenge solver couldn't run. Make sure `Node.js` is installed and reachable (see [Configuration](#configuration)). Audio downloads usually still succeed, but enabling the solver avoids missing/throttled formats.
 
 ## Notes
 

@@ -1,2 +1,2 @@
-yt-dlp==2026.3.17
+yt-dlp==2026.6.9
 python-dotenv==1.2.2

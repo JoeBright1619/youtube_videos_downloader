@@ -121,3 +121,84 @@ class DownloaderUI:
 
     def set_download_enabled(self, enabled: bool):
         self.download_button.config(state="normal" if enabled else "disabled")
+
+    def ask_duplicate_dialog(self, title: str):
+        """
+        Modal prompt shown when a track looks like it already exists.
+        Returns one of: "skip", "skip_all", "download", "download_all".
+        Must be called on the UI thread. Blocks until the user chooses.
+        """
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Possible duplicate")
+        dialog.configure(bg="#0f172a")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+
+        result = {"value": "skip"}
+
+        def choose(value: str):
+            result["value"] = value
+            dialog.destroy()
+
+        # Closing the window (X) is treated as "skip this".
+        dialog.protocol("WM_DELETE_WINDOW", lambda: choose("skip"))
+
+        body = tk.Frame(dialog, bg="#0f172a")
+        body.pack(fill="both", expand=True, padx=20, pady=20)
+
+        tk.Label(
+            body,
+            text="This track may already exist in the folder:",
+            bg="#0f172a",
+            fg="#e5e5e5",
+            font=(self.FONT_UI, 10, "bold"),
+            justify="left",
+            anchor="w",
+        ).pack(fill="x")
+
+        tk.Label(
+            body,
+            text=title or "Unknown title",
+            bg="#0f172a",
+            fg="#ffdd57",
+            font=(self.FONT_UI, 9),
+            wraplength=380,
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(6, 14))
+
+        buttons = [
+            ("Skip this", "skip", "#1f2933"),
+            ("Skip all duplicates", "skip_all", "#1f2933"),
+            ("Download this", "download", "#2563eb"),
+            ("Download all duplicates", "download_all", "#2563eb"),
+        ]
+
+        grid = tk.Frame(body, bg="#0f172a")
+        grid.pack(fill="x")
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+        for index, (label, value, color) in enumerate(buttons):
+            tk.Button(
+                grid,
+                text=label,
+                bg=color,
+                fg="#f9fafb",
+                activebackground="#111827",
+                activeforeground="#ffffff",
+                relief="flat",
+                padx=12,
+                pady=6,
+                command=lambda v=value: choose(v),
+            ).grid(row=index // 2, column=index % 2, sticky="ew", padx=4, pady=4)
+
+        # Center over the main window.
+        dialog.update_idletasks()
+        px, py = self.root.winfo_rootx(), self.root.winfo_rooty()
+        pw, ph = self.root.winfo_width(), self.root.winfo_height()
+        dw, dh = dialog.winfo_width(), dialog.winfo_height()
+        dialog.geometry(f"+{px + (pw - dw) // 2}+{py + (ph - dh) // 2}")
+
+        dialog.grab_set()
+        self.root.wait_window(dialog)
+        return result["value"]
