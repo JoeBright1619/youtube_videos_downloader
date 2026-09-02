@@ -72,16 +72,6 @@ def _resolve_cookie_file():
     return None
 
 
-def is_playlist(url: str) -> bool:
-    """
-    Treat any URL that has a playlist id (list=...) as a playlist,
-    including watch URLs like:
-      https://www.youtube.com/watch?v=...&list=...
-    so yt_dlp will download the whole playlist instead of a single video.
-    """
-    return "list=" in url
-
-
 class _YtDlpLogger:
     def __init__(self, error_callback=None):
         self._error_callback = error_callback
@@ -98,7 +88,8 @@ class _YtDlpLogger:
             self._error_callback(msg)
 
 
-def download(url, folder, progress_callback=None, error_callback=None, match_filter=None):
+def _build_ydl_opts(folder, progress_callback=None, error_callback=None, match_filter=None) -> dict:
+    """Build the yt-dlp options dict shared by single-video and playlist paths."""
     archive_file = str(Path(folder) / ".yt_dlp_downloaded_archive.txt")
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -108,10 +99,6 @@ def download(url, folder, progress_callback=None, error_callback=None, match_fil
         # Keep a per-folder archive of downloaded video IDs.
         # If a video is already in this archive, yt-dlp skips it.
         'download_archive': archive_file,
-        # If this URL looks like it belongs to a playlist (has list=),
-        # allow yt_dlp to process the full playlist instead of forcing
-        # single‑video mode.
-        'noplaylist': not is_playlist(url),
         # YouTube gates audio/video formats behind JavaScript "signature"/"n"
         # challenges. yt-dlp fetches its EJS solver script from GitHub to solve
         # them; without this, only thumbnails resolve and downloads fail with
@@ -156,5 +143,53 @@ def download(url, folder, progress_callback=None, error_callback=None, match_fil
     if progress_callback:
         ydl_opts['progress_hooks'] = [progress_callback]
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    return ydl_opts
+
+
+def download(
+    url,
+    folder,
+    progress_callback=None,
+    error_callback=None,
+    match_filter=None,
+    before_item_callback=None,
+):
+    """
+    Download a single video (or all tracks of a playlist) to MP3 files.
+
+    If `before_item_callback` is provided, it is invoked before the second
+    and subsequent playlist items start downloading, so the caller can
+    pause/resume the batch between tracks.
+    """
+    opts = _build_ydl_opts(folder, progress_callback, error_callback, match_filter)
+
+    if before_item_callback:
+        # Wrap the progress hook so that, for playlists, we can pause between
+        # individual tracks. yt-dlp fires a progress callback with status
+        # 'downloading' once per item (repeatedly while data streams). The
+        # first event for a given video_id marks the start of that item's
+        # download. We block on the callback before the second+ items.
+        seen_ids = set()
+        first_item = True
+
+        def _pause_aware_progress(data):
+            nonlocal first_item
+            status = data.get("status")
+            info = data.get("info_dict") or {}
+            video_id = info.get("id") or ""
+
+            if status == "downloading" and video_id and video_id not in seen_ids:
+                seen_ids.add(video_id)
+                if not first_item:
+                    before_item_callback()
+                first_item = False
+
+            if progress_callback:
+                progress_callback(data)
+
+        hooks = list(opts.get("progress_hooks") or [])
+        hooks.append(_pause_aware_progress)
+        opts["progress_hooks"] = hooks
+
+    with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore[arg-type]
         ydl.download([url])

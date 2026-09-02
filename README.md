@@ -11,6 +11,7 @@ A simple desktop app for downloading YouTube videos (and full playlists) as MP3 
 - **Duplicate prompt** — before downloading, each track is checked against audio files already in the folder (matched loosely by normalized title). If a match is found you're asked what to do: **Skip this**, **Skip all duplicates**, **Download this**, or **Download all duplicates**. "Skip/Download all" applies to the rest of the run automatically.
 - **Failure reporting** — items that fail are skipped (the rest of the batch continues) and written to a timestamped `failed_downloads_*.txt` report in the output folder.
 - **Live progress** — per-track status, download percentage, and conversion state shown in the window.
+- **Pause / resume** — the **Pause** button finishes the current track (or playlist item), then stops before the next one. Click **Resume** to continue the batch where you left off.
 - **High-DPI aware** — crisp text and layout on scaled Windows displays.
 
 ## Requirements

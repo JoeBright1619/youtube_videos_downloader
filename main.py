@@ -13,7 +13,7 @@ def main():
 
     ui = DownloaderUI(root)
     controller = DownloadController(ui)
-    ui.bind_actions(controller.choose_folder, controller.start_download)
+    ui.bind_actions(controller.choose_folder, controller.start_download, controller.toggle_pause)
 
     root.mainloop()
 

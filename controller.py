@@ -25,6 +25,11 @@ class DownloadController:
         # Video ids already evaluated this run (yt-dlp calls the filter twice
         # per video, so we must only decide once).
         self._seen_ids = set()
+        # Pause/resume control. The Event is set while the download is NOT
+        # paused, so wait_until_resumed() blocks until the user resumes.
+        self._resume_event = threading.Event()
+        self._resume_event.set()
+        self._is_paused = False
 
     def _run_on_ui(self, fn):
         self.ui.root.after(0, fn)
@@ -179,8 +184,30 @@ class DownloadController:
         return report_path
 
     def start_download(self):
+        # Reset pause state for a fresh run.
+        self._resume_event.set()
+        self._is_paused = False
+        self._run_on_ui(lambda: self.ui.set_pause_enabled(True))
         self.ui.set_download_enabled(False)
         threading.Thread(target=self._run_download, daemon=True).start()
+
+    def toggle_pause(self):
+        """Toggle between pausing and resuming the download batch."""
+        if self._is_paused:
+            # Resume.
+            self._is_paused = False
+            self._resume_event.set()
+            self._run_on_ui(lambda: self.ui.set_paused(False))
+        else:
+            # Pause between items. The currently downloading item finishes.
+            self._is_paused = True
+            self._resume_event.clear()
+            self._run_on_ui(lambda: self.ui.set_paused(True))
+            self._set_status("Paused — waiting for you to resume...", fg="#ffdd57")
+
+    def _wait_until_resumed(self):
+        """Block the download thread until the user unpauses."""
+        self._resume_event.wait()
 
     def _run_download(self):
         urls = self.ui.get_urls()
@@ -207,6 +234,10 @@ class DownloadController:
                 if not url:
                     continue
 
+                # If paused, wait for the user to hit Resume before
+                # continuing with the next link/playlist.
+                self._wait_until_resumed()
+
                 self._set_status(f"Processing link ({i}/{len(urls)})...", fg="#ffdd57")
                 download(
                     url,
@@ -218,6 +249,7 @@ class DownloadController:
                         msg,
                     ),
                     match_filter=self._match_filter,
+                    before_item_callback=self._wait_until_resumed,
                 )
 
             report_path = self._write_failed_report()
@@ -239,4 +271,10 @@ class DownloadController:
             error_text = str(exc)
             self._run_on_ui(lambda msg=error_text: messagebox.showerror("Error", msg))
         finally:
+            # Reset pause state and disable the pause button once the batch
+            # completes (successfully or not).
+            self._resume_event.set()
+            self._is_paused = False
+            self._run_on_ui(lambda: self.ui.set_paused(False))
+            self._run_on_ui(lambda: self.ui.set_pause_enabled(False))
             self._set_download_enabled(True)

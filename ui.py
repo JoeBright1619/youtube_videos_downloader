@@ -72,6 +72,20 @@ class DownloaderUI:
         )
         self.choose_button.pack(side="left")
 
+        self.pause_button = tk.Button(
+            actions,
+            text="Pause",
+            bg="#4b5563",
+            fg="#f9fafb",
+            activebackground="#374151",
+            activeforeground="#ffffff",
+            relief="flat",
+            padx=20,
+            pady=6,
+            state="disabled",
+        )
+        self.pause_button.pack(side="right", padx=(0, 8))
+
         self.download_button = tk.Button(
             actions,
             text="Download",
@@ -106,9 +120,10 @@ class DownloaderUI:
         )
         self.status_label.pack(fill="x", pady=(4, 0))
 
-    def bind_actions(self, on_choose_folder, on_download):
+    def bind_actions(self, on_choose_folder, on_download, on_pause):
         self.choose_button.config(command=on_choose_folder)
         self.download_button.config(command=on_download)
+        self.pause_button.config(command=on_pause)
 
     def get_urls(self):
         return self.entry.get("1.0", tk.END).strip().split("\n")
@@ -121,6 +136,13 @@ class DownloaderUI:
 
     def set_download_enabled(self, enabled: bool):
         self.download_button.config(state="normal" if enabled else "disabled")
+
+    def set_pause_enabled(self, enabled: bool):
+        self.pause_button.config(state="normal" if enabled else "disabled")
+
+    def set_paused(self, paused: bool):
+        """Toggle the pause button between 'Pause' and 'Resume'."""
+        self.pause_button.config(text="Resume" if paused else "Pause")
 
     def ask_duplicate_dialog(self, title: str):
         """
